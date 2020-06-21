@@ -3,7 +3,7 @@ import {withRouter} from 'react-router-dom';
 import {GameCanvas} from './gameCanvas';
 import {FC} from 'react';
 
-export const Component:FC = () => (
+export const Component: FC = () => (
   <div style={{display: 'flex', flex: 1, justifyContent: 'center'}}>
     <div
       style={{
@@ -14,7 +14,7 @@ export const Component:FC = () => (
         display: 'flex',
       }}
     >
-      <GameCanvas/>
+      <GameCanvas />
     </div>
   </div>
 );

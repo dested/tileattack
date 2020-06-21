@@ -142,6 +142,8 @@ export class GameBoard {
         return 10000;
       case 'puzzle':
         return Math.max(...this.tiles.map((t) => t.y)) + 1;
+      default:
+        throw unreachable(this.gameMode);
     }
   }
 
