@@ -183,7 +183,7 @@ ytytyt
 
     // seed('a');
 
-    this.board = new GameBoard('endless', maps.big);
+    this.board = new GameBoard('endless', maps.puzzles.original2[5].board);
     this.board.loadAssetSheets(blockAssetSheet, comboBoxesAssetSheet, numbersAssetSheet);
     this.board.tick();
     setInterval(() => {

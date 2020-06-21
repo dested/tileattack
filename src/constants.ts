@@ -1,4 +1,3 @@
-
 export const boardWidth = 6;
 export const boardHeight = 12;
 export const tileSize = 16;
@@ -9,9 +8,16 @@ export const AnimationConstants = {
   matchBlinkTicks: 44,
   matchSolidTicks: 20,
   matchPopTicksEach: 9,
-  /*matchBlinkTicks: 4,
-  matchSolidTicks: 4,
-  matchPopTicksEach: 3,*/
-
   cursorFlex: 32,
 };
+
+const fast = false;
+if (fast) {
+  AnimationConstants.swapTicks = 1;
+  AnimationConstants.dropStallTicks = 1;
+  AnimationConstants.dropBounceTicks = 3;
+
+  AnimationConstants.matchBlinkTicks = 1;
+  AnimationConstants.matchSolidTicks = 1;
+  AnimationConstants.matchPopTicksEach = 1;
+}

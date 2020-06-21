@@ -352,6 +352,16 @@ export class GameBoard {
     const y = this.cursor.y;
     const tile = this.getTile(x, y);
     const tileRight = this.getTile(x + 1, y);
+    if (tile && !tileRight) {
+      if (this.droppingColumns.find((a) => a.x === x + 1 && a.bottomY === y - 1)) {
+        return false;
+      }
+    }
+    if (!tile && tileRight) {
+      if (this.droppingColumns.find((a) => a.x === x && a.bottomY === y - 1)) {
+        return false;
+      }
+    }
     if ((!tile || tile.swappable) && (!tileRight || tileRight.swappable)) {
       this.swapAnimation = {
         swapTickCount: AnimationConstants.swapTicks,
@@ -650,7 +660,14 @@ export class GameBoard {
       for (let x = 0; x < boardWidth; x++) {
         const tile = this.getTile(x, y);
         if (tile && tile.swappable) {
-          if (lowestRow > tile.y + 1 && !this.getTile(tile.x, tile.y + 1)) {
+          if (
+            lowestRow > tile.y + 1 &&
+            !this.getTile(tile.x, tile.y + 1) &&
+            !(
+              this.swapAnimation?.y === tile.y + 1 &&
+              (this.swapAnimation?.x1 === tile.x || this.swapAnimation?.x2 === tile.x)
+            )
+          ) {
             tile.setSwappable(false);
             const fellBecauseOfPop = this.comboTrackers.find((a) => a.x === tile.x && tile.y < a.aboveY);
 
