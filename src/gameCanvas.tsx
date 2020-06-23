@@ -155,12 +155,14 @@ ytytyt
     const fastForward = 0;
     if (fastForward) {
       setTimeout(() => {
+        console.profile('ticks');
         for (let i = 0; i < fastForward; i++) {
           if (i % 1000 === 0) {
             console.log('fast forward:', i);
           }
           this.board!.tick();
         }
+        console.profileEnd('ticks');
         (window as any).ticker = 30;
       }, 5);
     }

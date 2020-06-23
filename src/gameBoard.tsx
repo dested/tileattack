@@ -3,6 +3,7 @@ import {unreachable} from './types/unreachable';
 import {groupBy, randomBetween, randomElement, unique} from './utils/utilts';
 import {TetrisAttackAssets} from './assetManager';
 import {AnimationConstants, boardHeight, boardWidth, tileSize} from './constants';
+import {HashArray} from './utils/hashArray';
 
 export type GameMode = 'endless' | 'puzzle';
 export type PopAnimation = {
@@ -89,11 +90,12 @@ export class GameBoard {
   cursor: {x: number; y: number} = {x: 0, y: 0};
   droppingColumns: DroppingAnimation[] = [];
   popAnimations: PopAnimation[] = [];
-  speed = 59;
+  speed = 5;
   swapAnimation?: SwapAnimation;
   tickCount = 0;
-  tiles: GameTile[] = [];
+  tiles = new HashArray<GameTile>((a) => a.y * boardWidth + a.x);
   topMostRow = 0;
+  private _lowestVisibleRow?: number;
 
   constructor(public gameMode: GameMode, start?: string) {
     switch (gameMode) {
@@ -104,11 +106,10 @@ export class GameBoard {
             this.fillRandom(y);
           }
         }
-        this.boardOffsetPosition = tileSize * boardHeight;
+        // this.boardOffsetPosition = tileSize * boardHeight;
 
         break;
       case 'puzzle':
-        let lowestY = 0;
         if (start) {
           const rows = start
             .split('\n')
@@ -122,7 +123,6 @@ export class GameBoard {
               const color = this.charToColor(rows[y].charAt(x));
               this.tiles.push(new GameTile(this, color, true, x, topPad + y));
             }
-            lowestY = y + 1;
           }
         }
         this.boardOffsetPosition = tileSize * boardHeight;
@@ -133,17 +133,22 @@ export class GameBoard {
   get boardPaused() {
     return this.popAnimations.length > 0;
   }
+
   get lowestVisibleRow() {
+    if (this._lowestVisibleRow !== undefined) return this._lowestVisibleRow;
+
     switch (this.gameMode) {
       case 'endless':
         for (let y = this.topMostRow; y < 10000; y++) {
           if (this.boardOffsetPosition - y * tileSize <= 0) {
-            return y - 1;
+            this._lowestVisibleRow = y - 1;
+            return this._lowestVisibleRow;
           }
         }
         return 10000;
       case 'puzzle':
-        return Math.max(...this.tiles.map((t) => t.y)) + 1;
+        this._lowestVisibleRow = Math.max(...this.tiles.map((t) => t.y)) + 1;
+        return this._lowestVisibleRow;
       default:
         throw unreachable(this.gameMode);
     }
@@ -249,17 +254,9 @@ export class GameBoard {
   }
 
   getTile(x: number, y: number) {
-    const gameTiles = this.tiles.filter((a) => a.x === x && a.y === y);
-    if (gameTiles.length > 1) {
-      console.log(
-        'bad',
-        this.tickCount,
-        x,
-        y,
-        gameTiles.map((a) => a.color)
-      );
-    }
-    return gameTiles[0];
+    return this.tiles.getByKey(y * boardWidth + x);
+    // const gameTiles = this.tiles.filter((a) => a.x === x && a.y === y);
+    // return gameTiles[0];
   }
 
   isEmpty(y: number) {
@@ -381,16 +378,6 @@ export class GameBoard {
         return false;
       }
     }
-    /*if (tile && tileRight) {
-      if (
-        this.droppingColumns.find(
-          (a) => a.droppingPhase === 'falling' && (a.x === x || a.x === x + 1) && a.bottomY > y - 1
-        )
-      ) {
-        // cant swap while its falling, which isnt accurate to the game, but reasonable
-        return false;
-      }
-    }*/
 
     if (
       this.popAnimations.find(
@@ -420,202 +407,38 @@ export class GameBoard {
 
   tick() {
     this.tickCount++;
+    this._lowestVisibleRow = undefined;
 
-    if (!this.swapAnimation) {
-      let count = 0;
-      while (count < 10) {
-        this.cursor.x = randomElement([0, 1, 2, 3, 4]);
-        this.cursor.y = randomBetween(this.topMostRow, this.lowestVisibleRow);
-        if (this.swap()) {
-          break;
-        }
-        count++;
-      }
+    // this.runAutoSwapper();
+    this.pushUpBoard();
+    this.makeSureBoardIsFull();
+    this.tickTiles();
+    this.updateSwap();
+    this.updatePop();
+    this.testMatches();
+    this.dropPieces();
+    this.findNewDrops();
+  }
+
+  private charToColor(s: string): TileColor {
+    switch (s) {
+      case 'g':
+        return 'green';
+      case 'p':
+        return 'purple';
+      case 'r':
+        return 'red';
+      case 'y':
+        return 'yellow';
+      case 't':
+        return 'teal';
+      case 'b':
+        return 'blue';
     }
+    throw new Error('Color not found');
+  }
 
-    if (!this.boardPaused && this.gameMode === 'endless') {
-      if (this.tickCount % (60 - this.speed) === 0) {
-        this.boardOffsetPosition += 1;
-      }
-    }
-
-    if (this.gameMode === 'endless') {
-      const currentLowestY = this.lowestVisibleRow;
-      for (let y = this.topMostRow; y < currentLowestY; y++) {
-        if (this.isEmpty(y)) {
-          this.topMostRow = y;
-        } else {
-          /*
-          if (boardHeight * tileSize - this.boardOffsetPosition - this.rows[this.topMostRow].tiles[0].drawY < 0) {
-            // alert('dead');
-          }
-*/
-          break;
-        }
-      }
-
-      const maxY = Math.max(...this.tiles.map((a) => a.y)) + 1;
-      if (maxY - this.topMostRow < 15) {
-        for (let y = maxY; y < maxY + this.topMostRow; y++) {
-          this.fillRandom(y);
-        }
-      }
-    }
-
-    for (let y = this.lowestVisibleRow; y >= this.topMostRow; y--) {
-      for (let x = 0; x < boardWidth; x++) {
-        const tile = this.getTile(x, y);
-        tile?.tick();
-      }
-    }
-
-    if (this.swapAnimation) {
-      const tile1 = this.getTile(this.swapAnimation.x1, this.swapAnimation.y);
-      const tile2 = this.getTile(this.swapAnimation.x2, this.swapAnimation.y);
-      if (this.swapAnimation.swapTickCount > 0) {
-        this.swapAnimation.swapTickCount--;
-        const swapPercent = 1 - this.swapAnimation.swapTickCount / AnimationConstants.swapTicks;
-        if (tile1) {
-          tile1.drawX = tile1.x * tileSize + tileSize * swapPercent;
-        }
-        if (tile2) {
-          tile2.drawX = tile2.x * tileSize - tileSize * swapPercent;
-        }
-      } else if (this.swapAnimation.swapTickCount === 0) {
-        if (tile1) {
-          tile1.setX(this.swapAnimation.x2);
-          tile1.setSwappable(true);
-        }
-        if (tile2) {
-          tile2.setX(this.swapAnimation.x1);
-          tile2.setSwappable(true);
-        }
-        this.swapAnimation = undefined;
-      }
-    }
-
-    for (let i = this.popAnimations.length - 1; i >= 0; i--) {
-      const popAnimation = this.popAnimations[i];
-      switch (popAnimation.matchPhase) {
-        case 'blink':
-          if (popAnimation.matchTimer > 0) {
-            popAnimation.matchTimer--;
-          } else {
-            popAnimation.matchPhase = 'solid';
-            popAnimation.matchTimer = AnimationConstants.matchSolidTicks;
-          }
-          break;
-        case 'solid':
-          if (popAnimation.matchTimer > 0) {
-            popAnimation.matchTimer--;
-          } else {
-            popAnimation.matchPhase = 'pop';
-            popAnimation.matchTimer = AnimationConstants.matchPopTicksEach;
-          }
-          break;
-        case 'pop':
-          if (popAnimation.matchTimer > 0) {
-            popAnimation.matchTimer--;
-          } else {
-            if (popAnimation.popAnimationIndex < popAnimation.queuedPops.length - 1) {
-              popAnimation.popAnimationIndex++;
-              popAnimation.matchPhase = 'pop';
-              popAnimation.matchTimer = AnimationConstants.matchPopTicksEach;
-            } else {
-              this.popAnimations.splice(i, 1);
-
-              for (const group of groupBy(popAnimation.queuedPops, (a) => a.x)) {
-                this.comboTrackers.push({
-                  x: group.key,
-                  timer: 2,
-                  aboveY: Math.max(...group.items.map((a) => a.y)),
-                });
-              }
-
-              for (const tile of popAnimation.queuedPops) {
-                this.popTile(tile);
-              }
-              continue;
-            }
-          }
-          break;
-      }
-
-      for (const tile of popAnimation.queuedPops) {
-        switch (popAnimation.matchPhase) {
-          case 'blink':
-            tile.drawType = popAnimation.matchTimer % 2 === 0 ? 'matched' : 'matched-blink';
-            break;
-          case 'solid':
-            if (popAnimation.matchTimer > 0) {
-              tile.drawType = 'popping';
-            }
-            break;
-          case 'pop':
-            if (popAnimation.matchTimer > 0) {
-              const topPop = popAnimation.queuedPops[popAnimation.popAnimationIndex];
-              if (topPop?.x === tile.x && topPop?.y === tile.y) {
-                tile.drawType = 'popped';
-              } else {
-                if (tile.drawType !== 'popped') tile.drawType = 'popping';
-              }
-            }
-            break;
-          case undefined:
-            break;
-        }
-      }
-    }
-
-    let queuedPops: GameTile[] = [];
-    for (let y = this.topMostRow; y < this.lowestVisibleRow; y++) {
-      for (let x = 0; x < boardWidth; x++) {
-        const tile = this.getTile(x, y);
-        if (!tile || !tile.swappable || this.tileIsFloating(tile)) continue;
-        let total: number;
-        if (tile.x < boardWidth - 1) {
-          total = this.testTile(queuedPops, tile.color, 'right', tile.x + 1, tile.y, 1);
-          if (total >= 3) {
-            queuedPops.push(tile);
-          }
-        }
-        total = this.testTile(queuedPops, tile.color, 'down', tile.x, tile.y + 1, 1);
-        if (total >= 3) {
-          queuedPops.push(tile);
-        }
-      }
-    }
-    queuedPops = unique(queuedPops);
-    for (const queuedPop of queuedPops) {
-      queuedPop.setSwappable(false);
-    }
-
-    if (queuedPops.length > 0) {
-      const topMostLeftMostTile = [...queuedPops].sort((a, b) => a.y * boardWidth + a.x - (b.y * boardWidth + b.x))[0];
-      let triggeredCombo = false;
-      if (queuedPops.some((a) => a.comboViable)) {
-        triggeredCombo = true;
-        this.comboCount++;
-      }
-      const popAnimation: PopAnimation = {
-        queuedPops: queuedPops.reverse(),
-        popAnimationIndex: 0,
-        matchPhase: 'blink',
-        matchTimer: AnimationConstants.matchBlinkTicks,
-        popDialog: {
-          startingY: topMostLeftMostTile.drawY,
-          x: topMostLeftMostTile.drawX,
-          comboCount: triggeredCombo ? this.comboCount : 1,
-          tick: 0,
-        },
-      };
-      this.popAnimations.push(popAnimation);
-    }
-
-    for (const tile of this.tiles) {
-      tile.setComboViable(false);
-    }
-
+  private dropPieces() {
     for (let i = this.droppingColumns.length - 1; i >= 0; i--) {
       const droppingPiece = this.droppingColumns[i];
 
@@ -691,7 +514,9 @@ export class GameBoard {
               if (this.isSwapping(tile)) {
                 break;
               }
+              this.tiles.removeItem(tile);
               tile.setY(tile.y + 1);
+              this.tiles.push(tile);
             }
           }
           droppingPiece.bottomY += 1;
@@ -717,7 +542,9 @@ export class GameBoard {
         }
       }
     }
+  }
 
+  private findNewDrops() {
     const lowestRow = this.lowestVisibleRow;
     for (let y = this.topMostRow; y < lowestRow; y++) {
       for (let x = 0; x < boardWidth; x++) {
@@ -767,34 +594,122 @@ export class GameBoard {
     }
   }
 
-  private charToColor(s: string): TileColor {
-    switch (s) {
-      case 'g':
-        return 'green';
-      case 'p':
-        return 'purple';
-      case 'r':
-        return 'red';
-      case 'y':
-        return 'yellow';
-      case 't':
-        return 'teal';
-      case 'b':
-        return 'blue';
-    }
-    throw new Error('Color not found');
-  }
-
   private isSwapping(tile: GameTile) {
     if (!this.swapAnimation) return false;
     return this.swapAnimation.y === tile.y && (tile.x === this.swapAnimation.x1 || tile.x === this.swapAnimation.x2);
   }
 
+  private makeSureBoardIsFull() {
+    if (this.gameMode === 'endless') {
+      const currentLowestY = this.lowestVisibleRow;
+      for (let y = this.topMostRow; y < currentLowestY; y++) {
+        if (this.isEmpty(y)) {
+          this.topMostRow = y;
+        } else {
+          /*
+          if (boardHeight * tileSize - this.boardOffsetPosition - this.rows[this.topMostRow].tiles[0].drawY < 0) {
+            // alert('dead');
+          }
+*/
+          break;
+        }
+      }
+
+      if (this.boardOffsetPosition % tileSize === 0) {
+        let lowestY = 0;
+        for (const tile of this.tiles.array) {
+          if (lowestY < tile.y) {
+            lowestY = tile.y;
+          }
+        }
+        const maxY = lowestY + 1;
+        if (maxY - this.topMostRow < 15) {
+          for (let y = maxY; y < maxY + this.topMostRow; y++) {
+            this.fillRandom(y);
+          }
+        }
+      }
+    }
+  }
+
   private popTile(tile: GameTile) {
-    if (this.tiles.indexOf(tile) === -1) {
+    if (!this.tiles.exists(tile)) {
       throw new Error('bad pop');
     } else {
-      this.tiles.splice(this.tiles.indexOf(tile), 1);
+      this.tiles.removeItem(tile);
+    }
+  }
+
+  private pushUpBoard() {
+    if (!this.boardPaused && this.gameMode === 'endless') {
+      if (this.tickCount % (60 - this.speed) === 0) {
+        this.boardOffsetPosition += 1;
+      }
+    }
+  }
+
+  private runAutoSwapper() {
+    if (!this.swapAnimation) {
+      let count = 0;
+      while (count < 10) {
+        this.cursor.x = randomElement([0, 1, 2, 3, 4]);
+        this.cursor.y = randomBetween(this.topMostRow, this.lowestVisibleRow);
+        if (this.swap()) {
+          break;
+        }
+        count++;
+      }
+    }
+  }
+
+  private testMatches() {
+    let queuedPops: GameTile[] = [];
+    for (let y = this.topMostRow; y < this.lowestVisibleRow; y++) {
+      for (let x = 0; x < boardWidth; x++) {
+        const tile = this.getTile(x, y);
+        if (!tile || !tile.swappable || this.tileIsFloating(tile)) continue;
+        let total: number;
+        if (tile.x < boardWidth - 1) {
+          total = this.testTile(queuedPops, tile.color, 'right', tile.x + 1, tile.y, 1);
+          if (total >= 3) {
+            queuedPops.push(tile);
+          }
+        }
+        total = this.testTile(queuedPops, tile.color, 'down', tile.x, tile.y + 1, 1);
+        if (total >= 3) {
+          queuedPops.push(tile);
+        }
+      }
+    }
+    queuedPops = unique(queuedPops);
+    for (const queuedPop of queuedPops) {
+      queuedPop.setSwappable(false);
+    }
+
+    if (queuedPops.length > 0) {
+      const topMostLeftMostTile = [...queuedPops].sort((a, b) => a.y * boardWidth + a.x - (b.y * boardWidth + b.x))[0];
+      let triggeredCombo = false;
+      if (queuedPops.some((a) => a.comboViable)) {
+        triggeredCombo = true;
+        this.comboCount++;
+      }
+      const popAnimation: PopAnimation = {
+        queuedPops: queuedPops.reverse(),
+        popAnimationIndex: 0,
+        matchPhase: 'blink',
+        matchTimer: AnimationConstants.matchBlinkTicks,
+        popDialog: {
+          startingY: topMostLeftMostTile.drawY,
+          x: topMostLeftMostTile.drawX,
+          comboCount: triggeredCombo ? this.comboCount : 1,
+          tick: 0,
+        },
+      };
+      this.popAnimations.push(popAnimation);
+    }
+
+    for (const tile of this.tiles) {
+      tile.setComboViable(false);
     }
   }
 
@@ -851,11 +766,130 @@ export class GameBoard {
     }
   }
 
+  private tickTiles() {
+    for (let y = this.lowestVisibleRow; y >= this.topMostRow; y--) {
+      for (let x = 0; x < boardWidth; x++) {
+        const tile = this.getTile(x, y);
+        tile?.tick();
+      }
+    }
+  }
+
   private tileIsFloating(tile: GameTile) {
     return (
       this.droppingColumns.find((a) => a.x === tile.x && a.dropBouncePhase === 'not-started') ||
       (!this.getTile(tile.x, tile.y + 1) && tile.y > this.lowestVisibleRow)
     );
+  }
+
+  private updatePop() {
+    for (let i = this.popAnimations.length - 1; i >= 0; i--) {
+      const popAnimation = this.popAnimations[i];
+      switch (popAnimation.matchPhase) {
+        case 'blink':
+          if (popAnimation.matchTimer > 0) {
+            popAnimation.matchTimer--;
+          } else {
+            popAnimation.matchPhase = 'solid';
+            popAnimation.matchTimer = AnimationConstants.matchSolidTicks;
+          }
+          break;
+        case 'solid':
+          if (popAnimation.matchTimer > 0) {
+            popAnimation.matchTimer--;
+          } else {
+            popAnimation.matchPhase = 'pop';
+            popAnimation.matchTimer = AnimationConstants.matchPopTicksEach;
+          }
+          break;
+        case 'pop':
+          if (popAnimation.matchTimer > 0) {
+            popAnimation.matchTimer--;
+          } else {
+            if (popAnimation.popAnimationIndex < popAnimation.queuedPops.length - 1) {
+              popAnimation.popAnimationIndex++;
+              popAnimation.matchPhase = 'pop';
+              popAnimation.matchTimer = AnimationConstants.matchPopTicksEach;
+            } else {
+              this.popAnimations.splice(i, 1);
+
+              for (const group of groupBy(popAnimation.queuedPops, (a) => a.x)) {
+                this.comboTrackers.push({
+                  x: group.key,
+                  timer: 2,
+                  aboveY: Math.max(...group.items.map((a) => a.y)),
+                });
+              }
+
+              for (const tile of popAnimation.queuedPops) {
+                this.popTile(tile);
+              }
+              continue;
+            }
+          }
+          break;
+      }
+
+      for (const tile of popAnimation.queuedPops) {
+        switch (popAnimation.matchPhase) {
+          case 'blink':
+            tile.drawType = popAnimation.matchTimer % 2 === 0 ? 'matched' : 'matched-blink';
+            break;
+          case 'solid':
+            if (popAnimation.matchTimer > 0) {
+              tile.drawType = 'popping';
+            }
+            break;
+          case 'pop':
+            if (popAnimation.matchTimer > 0) {
+              const topPop = popAnimation.queuedPops[popAnimation.popAnimationIndex];
+              if (topPop?.x === tile.x && topPop?.y === tile.y) {
+                tile.drawType = 'popped';
+              } else {
+                if (tile.drawType !== 'popped') tile.drawType = 'popping';
+              }
+            }
+            break;
+          case undefined:
+            break;
+        }
+      }
+    }
+  }
+
+  private updateSwap() {
+    if (this.swapAnimation) {
+      const tile1 = this.getTile(this.swapAnimation.x1, this.swapAnimation.y);
+      const tile2 = this.getTile(this.swapAnimation.x2, this.swapAnimation.y);
+      if (this.swapAnimation.swapTickCount > 0) {
+        this.swapAnimation.swapTickCount--;
+        const swapPercent = 1 - this.swapAnimation.swapTickCount / AnimationConstants.swapTicks;
+        if (tile1) {
+          tile1.drawX = tile1.x * tileSize + tileSize * swapPercent;
+        }
+        if (tile2) {
+          tile2.drawX = tile2.x * tileSize - tileSize * swapPercent;
+        }
+      } else if (this.swapAnimation.swapTickCount === 0) {
+        if (tile1) {
+          this.tiles.removeItem(tile1);
+          tile1.setX(this.swapAnimation.x2);
+          tile1.setSwappable(true);
+        }
+        if (tile2) {
+          this.tiles.removeItem(tile2);
+          tile2.setX(this.swapAnimation.x1);
+          tile2.setSwappable(true);
+        }
+        if (tile1) {
+          this.tiles.push(tile1);
+        }
+        if (tile2) {
+          this.tiles.push(tile2);
+        }
+        this.swapAnimation = undefined;
+      }
+    }
   }
 
   static getBoxOffset(tick: number) {
