@@ -1,6 +1,6 @@
 import {GameTile} from './gameTile';
 import {unreachable} from './types/unreachable';
-import {groupBy, randomElement, unique} from './utils/utilts';
+import {groupBy, randomBetween, randomElement, unique} from './utils/utilts';
 import {TetrisAttackAssets} from './assetManager';
 import {AnimationConstants, boardHeight, boardWidth, tileSize} from './constants';
 
@@ -8,13 +8,13 @@ export type GameMode = 'endless' | 'puzzle';
 export type PopAnimation = {
   matchPhase: 'blink' | 'solid' | 'pop';
   matchTimer: number;
-  popAnimation: {
+  popAnimationIndex: number;
+  popDialog: {
     comboCount: number;
     startingY: number;
     tick: number;
     x: number;
   };
-  popAnimationIndex: number;
   queuedPops: GameTile[];
 };
 
@@ -37,6 +37,7 @@ export type DroppingAnimation = {
   dropBouncePhase: 'not-started' | 'regular' | 'low' | 'high' | 'mid';
 
   dropBounceTick: number;
+  droppingPhase: 'falling' | 'stalled' | 'bouncing';
   dropTickCount: number;
   x: number;
 };
@@ -88,7 +89,7 @@ export class GameBoard {
   cursor: {x: number; y: number} = {x: 0, y: 0};
   droppingColumns: DroppingAnimation[] = [];
   popAnimations: PopAnimation[] = [];
-  speed = 10;
+  speed = 59;
   swapAnimation?: SwapAnimation;
   tickCount = 0;
   tiles: GameTile[] = [];
@@ -103,6 +104,7 @@ export class GameBoard {
             this.fillRandom(y);
           }
         }
+        this.boardOffsetPosition = tileSize * boardHeight;
 
         break;
       case 'puzzle':
@@ -184,8 +186,8 @@ export class GameBoard {
     }
 
     for (const popAnimation of this.popAnimations) {
-      if (popAnimation.popAnimation.tick > 2) {
-        let offset = GameBoard.getBoxOffset(popAnimation.popAnimation.tick);
+      if (popAnimation.popDialog.tick > 2) {
+        let offset = GameBoard.getBoxOffset(popAnimation.popDialog.tick);
         if (offset === -1) {
           continue;
         }
@@ -195,22 +197,22 @@ export class GameBoard {
             context,
             'pop',
             popAnimation.queuedPops.length as keyof GameBoard['assets']['numbers'],
-            popAnimation.popAnimation.x,
-            popAnimation.popAnimation.startingY - offset
+            popAnimation.popDialog.x,
+            popAnimation.popDialog.startingY - offset
           );
           offset += tileSize;
         }
-        if (popAnimation.popAnimation.comboCount > 1) {
+        if (popAnimation.popDialog.comboCount > 1) {
           this.drawBox(
             context,
             'repeat',
-            popAnimation.popAnimation.comboCount as keyof GameBoard['assets']['numbers'],
-            popAnimation.popAnimation.x,
-            popAnimation.popAnimation.startingY - offset
+            popAnimation.popDialog.comboCount as keyof GameBoard['assets']['numbers'],
+            popAnimation.popDialog.x,
+            popAnimation.popDialog.startingY - offset
           );
         }
       }
-      popAnimation.popAnimation.tick++;
+      popAnimation.popDialog.tick++;
     }
 
     context.restore();
@@ -249,6 +251,13 @@ export class GameBoard {
   getTile(x: number, y: number) {
     const gameTiles = this.tiles.filter((a) => a.x === x && a.y === y);
     if (gameTiles.length > 1) {
+      console.log(
+        'bad',
+        this.tickCount,
+        x,
+        y,
+        gameTiles.map((a) => a.color)
+      );
     }
     return gameTiles[0];
   }
@@ -350,20 +359,51 @@ export class GameBoard {
   }
 
   swap(): boolean {
+    if (this.swapAnimation) {
+      return false;
+    }
     const x = this.cursor.x;
     const y = this.cursor.y;
     const tile = this.getTile(x, y);
     const tileRight = this.getTile(x + 1, y);
+    if (!tile && !tileRight) {
+      return false;
+    }
     if (tile && !tileRight) {
       if (this.droppingColumns.find((a) => a.x === x + 1 && a.bottomY === y - 1)) {
+        // cant swap bottom of the dropped column while its falling
         return false;
       }
     }
     if (!tile && tileRight) {
       if (this.droppingColumns.find((a) => a.x === x && a.bottomY === y - 1)) {
+        // cant swap bottom of the dropped column while its falling
         return false;
       }
     }
+    /*if (tile && tileRight) {
+      if (
+        this.droppingColumns.find(
+          (a) => a.droppingPhase === 'falling' && (a.x === x || a.x === x + 1) && a.bottomY > y - 1
+        )
+      ) {
+        // cant swap while its falling, which isnt accurate to the game, but reasonable
+        return false;
+      }
+    }*/
+
+    if (
+      this.popAnimations.find(
+        (p) =>
+          p.matchPhase === 'pop' &&
+          p.popAnimationIndex === p.queuedPops.length - 1 &&
+          p.queuedPops.some((q) => (q.x === x || q.x === x + 1) && q.y > y)
+      )
+    ) {
+      // cant swap that column before the last pop happens
+      return false;
+    }
+
     if ((!tile || tile.swappable) && (!tileRight || tileRight.swappable)) {
       this.swapAnimation = {
         swapTickCount: AnimationConstants.swapTicks,
@@ -380,6 +420,19 @@ export class GameBoard {
 
   tick() {
     this.tickCount++;
+
+    if (!this.swapAnimation) {
+      let count = 0;
+      while (count < 10) {
+        this.cursor.x = randomElement([0, 1, 2, 3, 4]);
+        this.cursor.y = randomBetween(this.topMostRow, this.lowestVisibleRow);
+        if (this.swap()) {
+          break;
+        }
+        count++;
+      }
+    }
+
     if (!this.boardPaused && this.gameMode === 'endless') {
       if (this.tickCount % (60 - this.speed) === 0) {
         this.boardOffsetPosition += 1;
@@ -402,7 +455,6 @@ export class GameBoard {
       }
 
       const maxY = Math.max(...this.tiles.map((a) => a.y)) + 1;
-      // console.log(maxY, this.topMostRow, maxY - this.topMostRow, maxY - this.topMostRow < 15);
       if (maxY - this.topMostRow < 15) {
         for (let y = maxY; y < maxY + this.topMostRow; y++) {
           this.fillRandom(y);
@@ -550,7 +602,7 @@ export class GameBoard {
         popAnimationIndex: 0,
         matchPhase: 'blink',
         matchTimer: AnimationConstants.matchBlinkTicks,
-        popAnimation: {
+        popDialog: {
           startingY: topMostLeftMostTile.drawY,
           x: topMostLeftMostTile.drawX,
           comboCount: triggeredCombo ? this.comboCount : 1,
@@ -567,7 +619,7 @@ export class GameBoard {
     for (let i = this.droppingColumns.length - 1; i >= 0; i--) {
       const droppingPiece = this.droppingColumns[i];
 
-      if (droppingPiece.dropBouncePhase !== 'not-started') {
+      if (droppingPiece.droppingPhase === 'bouncing') {
         if (droppingPiece.dropBounceTick > 0) {
           droppingPiece.dropBounceTick--;
           if (droppingPiece.dropBouncePhase === 'low' && droppingPiece.dropBounceTick === 2) {
@@ -623,18 +675,26 @@ export class GameBoard {
         if (droppingPiece.dropTickCount > 0) {
           droppingPiece.dropTickCount--;
         } else if (droppingPiece.dropTickCount === 0) {
+          if (
+            this.getTile(droppingPiece.x, droppingPiece.bottomY + 1) ||
+            droppingPiece.bottomY + 1 >= this.lowestVisibleRow
+          ) {
+            // we started to fall but something is below us now so we're done for now.
+            this.droppingColumns.splice(i, 1);
+            continue;
+          }
+
+          droppingPiece.droppingPhase = 'falling';
           for (let y = droppingPiece.bottomY; y >= this.topMostRow; y--) {
             const tile = this.getTile(droppingPiece.x, y);
             if (tile) {
+              if (this.isSwapping(tile)) {
+                break;
+              }
               tile.setY(tile.y + 1);
             }
           }
           droppingPiece.bottomY += 1;
-          console.log(
-            droppingPiece.bottomY + 1 > this.lowestVisibleRow,
-            droppingPiece.bottomY + 1,
-            this.lowestVisibleRow
-          );
           if (
             this.getTile(droppingPiece.x, droppingPiece.bottomY + 1) ||
             droppingPiece.bottomY + 1 >= this.lowestVisibleRow
@@ -650,6 +710,7 @@ export class GameBoard {
             }
             droppingPiece.dropBounceTick = 1;
             droppingPiece.dropBouncePhase = 'regular';
+            droppingPiece.droppingPhase = 'bouncing';
           } else {
             droppingPiece.dropTickCount = 0;
           }
@@ -688,6 +749,7 @@ export class GameBoard {
               x: tile.x,
               bottomY: tile.y,
               dropBouncePhase: 'not-started',
+              droppingPhase: 'stalled',
               comboParticipatingTiles,
             });
           }
@@ -723,9 +785,14 @@ export class GameBoard {
     throw new Error('Color not found');
   }
 
+  private isSwapping(tile: GameTile) {
+    if (!this.swapAnimation) return false;
+    return this.swapAnimation.y === tile.y && (tile.x === this.swapAnimation.x1 || tile.x === this.swapAnimation.x2);
+  }
+
   private popTile(tile: GameTile) {
     if (this.tiles.indexOf(tile) === -1) {
-      // todo throw new Error('bad pop');
+      throw new Error('bad pop');
     } else {
       this.tiles.splice(this.tiles.indexOf(tile), 1);
     }

@@ -9,6 +9,10 @@ export function randomElement<T>(array: T[]) {
   const n = Math.floor(rng.quick() * array.length);
   return array[n];
 }
+export function randomBetween(low: number, high: number) {
+  const n = Math.floor(low + rng.quick() * (high - low));
+  return n;
+}
 
 export function safeKeys<T>(obj: T): (keyof T)[] {
   return Object.keys(obj) as (keyof T)[];

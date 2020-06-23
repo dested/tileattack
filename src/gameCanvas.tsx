@@ -11,6 +11,7 @@ import {RecognizersType} from 'react-gesture-handler/models/Gestures.models';
 import {TapEvent} from 'react-gesture-handler/models/GesturesTap.models';
 import {SwipeEvent} from 'react-gesture-handler/models/GesturesSwipe.models';
 import {PanEvent} from 'react-gesture-handler/models/GesturesPan.models';
+import {randomBetween, randomElement, seed} from './utils/utilts';
 
 export class GameCanvas extends React.Component {
   panning = false;
@@ -142,12 +143,39 @@ ytytyt
       big: `ytyy t\nygpttp\npprtrr\npgpggt\ntgtppg\ngppggt\npggppt\ngttpyg\ngpptpp\nyggppg\ngppttg`,
     } as const;
 
-    // seed('a');
+    seed('g');
 
     this.board = new GameBoard('endless', maps.puzzles.original2[5].board);
     this.board.loadAssetSheets(blockAssetSheet, comboBoxesAssetSheet, numbersAssetSheet);
+
+    const slow = false;
+    let tickCount = 0;
+    (window as any).ticker = 1;
+
+    const fastForward = 0;
+    if (fastForward) {
+      setTimeout(() => {
+        for (let i = 0; i < fastForward; i++) {
+          if (i % 1000 === 0) {
+            console.log('fast forward:', i);
+          }
+          this.board!.tick();
+        }
+        (window as any).ticker = 30;
+      }, 5);
+    }
+
     const tick = () => {
-      this.board!.tick();
+      tickCount++;
+      if (slow) {
+        if (tickCount % (window as any).ticker === 0) {
+          this.board!.tick();
+          console.log(this.board?.tickCount);
+        }
+      } else {
+        this.board!.tick();
+      }
+
       requestAnimationFrame(tick);
     };
 
