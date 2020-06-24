@@ -148,11 +148,11 @@ ytytyt
     this.board = new GameBoard('endless', maps.puzzles.original2[5].board);
     this.board.loadAssetSheets(blockAssetSheet, comboBoxesAssetSheet, numbersAssetSheet);
 
-    const slow = true;
+    const slow = false;
     let tickCount = 0;
     (window as any).ticker = 1;
 
-    const fastForward = 14800;
+    const fastForward = 0;
     if (fastForward) {
       setTimeout(() => {
         // console.profile('ticks');
@@ -174,9 +174,9 @@ ytytyt
           // console.log(this.board?.tickCount);
         }
       } else {
-        for (let i = 0; i < 1000; i++) {
+        // for (let i = 0; i < 1000; i++) {
           this.board!.tick();
-        }
+        // }
       }
 
       requestAnimationFrame(tick);

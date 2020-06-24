@@ -28,6 +28,14 @@ export class GameTile {
     this.drawX = this.x * tileSize;
     this.drawY = this.y * tileSize;
   }
+
+  clone(board: GameBoard) {
+    const tile = new GameTile(board, this.color, this.swappable, this.x, this.y);
+    tile.comboViable = this.comboViable;
+    tile.drawType = this.drawType;
+    tile.matched = this.matched;
+    return tile;
+  }
   draw(context: CanvasRenderingContext2D) {
     switch (this.drawType) {
       case 'matched':

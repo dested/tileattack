@@ -92,7 +92,7 @@ export class GameBoard {
   cursor: {x: number; y: number} = {x: 0, y: 0};
   droppingColumns: DroppingAnimation[] = [];
   popAnimations: PopAnimation[] = [];
-  speed = 59;
+  speed = 10;
   swapAnimation?: SwapAnimation;
   tickCount = 0;
   tiles = new HashArray<GameTile>();
@@ -154,6 +154,40 @@ export class GameBoard {
       default:
         throw unreachable(this.gameMode);
     }
+  }
+
+  clone() {
+    const board = new GameBoard(this.gameMode);
+    board.assets = this.assets;
+    board.boardOffsetPosition = this.boardOffsetPosition;
+    board.comboCount = this.comboCount;
+    board.comboTrackers = this.comboTrackers.map((a) => ({...a}));
+    board.cursor = {...this.cursor};
+    board.tiles = new HashArray<GameTile>();
+    board.tiles.pushRange(this.tiles.map((a) => a.clone(board)));
+    board.droppingColumns = this.droppingColumns.map((a) => ({
+      droppingPhase: a.droppingPhase,
+      dropBouncePhase: a.dropBouncePhase,
+      bottomY: a.bottomY,
+      x: a.x,
+      dropBounceTick: a.dropBounceTick,
+      dropTickCount: a.dropTickCount,
+      bouncingTiles: a.bouncingTiles.map((t) => board.tiles.getByKey(t.getHash())),
+      comboParticipatingTiles: a.comboParticipatingTiles.map((t) => board.tiles.getByKey(t.getHash())),
+    }));
+    board.popAnimations = this.popAnimations.map((a) => ({
+      matchPhase: a.matchPhase,
+      popAnimationIndex: a.popAnimationIndex,
+      matchTimer: a.matchTimer,
+      queuedPops: a.queuedPops.map((t) => board.tiles.getByKey(t.getHash())),
+      popDialog: {...a.popDialog},
+    }));
+    board.speed = this.speed;
+    board.swapAnimation = this.swapAnimation ? {...this.swapAnimation} : undefined;
+    board.tickCount = this.tickCount;
+    board.topMostRow = this.topMostRow;
+    board._lowestVisibleRow = this._lowestVisibleRow;
+    return board;
   }
 
   draw(context: CanvasRenderingContext2D) {
@@ -411,7 +445,7 @@ export class GameBoard {
     this.tickCount++;
     this._lowestVisibleRow = undefined;
 
-    this.runAutoSwapper();
+    // this.runAutoSwapper();
     this.pushUpBoard();
     this.makeSureBoardIsFull();
     this.tickTiles();
