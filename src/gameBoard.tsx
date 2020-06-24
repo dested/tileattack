@@ -98,7 +98,6 @@ export class GameBoard {
   tiles = new HashArray<GameTile>();
   topMostRow = 0;
   private _lowestVisibleRow?: number;
-  private cachedBlockGrid?: BlockGridElement[][];
 
   constructor(public gameMode: GameMode, start?: string) {
     switch (gameMode) {
@@ -419,7 +418,6 @@ export class GameBoard {
     this.updateSwap();
     this.updatePop();
 
-    this.buildCachedBlockGrid();
     this.testMatches();
     this.dropPieces();
     this.findNewDrops();
@@ -459,9 +457,9 @@ export class GameBoard {
     return str;
   }
 
-  private buildCachedBlockGrid() {
+  private buildBlockGrid() {
     const blockGrid: BlockGridElement[][] = [];
-    for (let y = this.topMostRow; y < this.lowestVisibleRow; y++) {
+    for (let y = this.topMostRow; y < this.lowestVisibleRow + 1; y++) {
       blockGrid[y] = [];
       for (let x = 0; x < boardWidth; x++) {
         const tile = this.getTile(x, y);
@@ -470,7 +468,7 @@ export class GameBoard {
         else blockGrid[y][x] = tile;
       }
     }
-    this.cachedBlockGrid = blockGrid;
+    return blockGrid;
   }
 
   private charToColor(s: string): TileColor {
@@ -530,7 +528,6 @@ export class GameBoard {
               for (const gameTile of droppingPiece.bouncingTiles) {
                 gameTile.drawType = 'bounce-high';
               }
-
               break;
             case 'high':
               droppingPiece.dropBounceTick = AnimationConstants.dropBounceTicks;
@@ -716,21 +713,21 @@ export class GameBoard {
   }
 
   private testMatches() {
-    if (!this.cachedBlockGrid) return;
+    const blockGrid = this.buildBlockGrid();
 
     let queuedPops: GameTile[] = [];
     for (let y = this.topMostRow; y < this.lowestVisibleRow; y++) {
       for (let x = 0; x < boardWidth; x++) {
-        const tile = this.cachedBlockGrid[y][x];
+        const tile = blockGrid[y][x];
         if (tile === 'empty' || tile === 'blocked') continue;
         let total: number;
         if (tile.x < boardWidth - 1) {
-          total = this.testTile(queuedPops, tile.color, 'right', tile.x + 1, tile.y, 1);
+          total = this.testTile(blockGrid, queuedPops, tile.color, 'right', tile.x + 1, tile.y, 1);
           if (total >= 3) {
             queuedPops.push(tile);
           }
         }
-        total = this.testTile(queuedPops, tile.color, 'down', tile.x, tile.y + 1, 1);
+        total = this.testTile(blockGrid, queuedPops, tile.color, 'down', tile.x, tile.y + 1, 1);
         if (total >= 3) {
           queuedPops.push(tile);
         }
@@ -770,6 +767,7 @@ export class GameBoard {
   }
 
   private testTile(
+    blockGrid: BlockGridElement[][],
     queuedPops: GameTile[],
     color: GameTile['color'],
     direction: 'left' | 'right' | 'up' | 'down',
@@ -777,17 +775,13 @@ export class GameBoard {
     y: number,
     count: number
   ): number {
-    const cachedBlockGridY = this.cachedBlockGrid![y];
-    if (!cachedBlockGridY) {
-      return count;
-    }
-    const tile = cachedBlockGridY[x];
+    const tile = blockGrid![y][x];
     if (tile === 'empty' || tile === 'blocked' || !tile) return count;
 
     switch (direction) {
       case 'left':
         if (tile.color === color) {
-          const total = this.testTile(queuedPops, color, 'left', x - 1, y, count + 1);
+          const total = this.testTile(blockGrid, queuedPops, color, 'left', x - 1, y, count + 1);
           if (total >= 3) {
             queuedPops.push(tile);
           }
@@ -796,7 +790,7 @@ export class GameBoard {
         return count;
       case 'right':
         if (tile.color === color) {
-          const total = this.testTile(queuedPops, color, 'right', x + 1, y, count + 1);
+          const total = this.testTile(blockGrid, queuedPops, color, 'right', x + 1, y, count + 1);
           if (total >= 3) {
             queuedPops.push(tile);
           }
@@ -805,7 +799,7 @@ export class GameBoard {
         return count;
       case 'up':
         if (tile.color === color) {
-          const total = this.testTile(queuedPops, color, 'up', x, y - 1, count + 1);
+          const total = this.testTile(blockGrid, queuedPops, color, 'up', x, y - 1, count + 1);
           if (total >= 3) {
             queuedPops.push(tile);
           }
@@ -814,7 +808,7 @@ export class GameBoard {
         return count;
       case 'down':
         if (y < this.lowestVisibleRow && tile.color === color) {
-          const total = this.testTile(queuedPops, color, 'down', x, y + 1, count + 1);
+          const total = this.testTile(blockGrid, queuedPops, color, 'down', x, y + 1, count + 1);
           if (total >= 3) {
             queuedPops.push(tile);
           }
