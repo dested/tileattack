@@ -90,10 +90,10 @@ export class GameBoard {
   cursor: {x: number; y: number} = {x: 0, y: 0};
   droppingColumns: DroppingAnimation[] = [];
   popAnimations: PopAnimation[] = [];
-  speed = 5;
+  speed = 59;
   swapAnimation?: SwapAnimation;
   tickCount = 0;
-  tiles = new HashArray<GameTile>((a) => a.y * boardWidth + a.x);
+  tiles = new HashArray<GameTile>();
   topMostRow = 0;
   private _lowestVisibleRow?: number;
 
@@ -254,7 +254,7 @@ export class GameBoard {
   }
 
   getTile(x: number, y: number) {
-    return this.tiles.getByKey(y * boardWidth + x);
+    return this.tiles.getByKey(y * 1000 + x);
     // const gameTiles = this.tiles.filter((a) => a.x === x && a.y === y);
     // return gameTiles[0];
   }
@@ -409,7 +409,7 @@ export class GameBoard {
     this.tickCount++;
     this._lowestVisibleRow = undefined;
 
-    // this.runAutoSwapper();
+    this.runAutoSwapper();
     this.pushUpBoard();
     this.makeSureBoardIsFull();
     this.tickTiles();
@@ -447,7 +447,7 @@ export class GameBoard {
           droppingPiece.dropBounceTick--;
           if (droppingPiece.dropBouncePhase === 'low' && droppingPiece.dropBounceTick === 2) {
             for (const gameTile of droppingPiece.bouncingTiles) {
-              gameTile.setSwappable(true);
+              if (!gameTile.matched) gameTile.setSwappable(true);
             }
             for (const comboParticipatingTile of droppingPiece.comboParticipatingTiles) {
               comboParticipatingTile.setComboViable(true);
@@ -514,9 +514,9 @@ export class GameBoard {
               if (this.isSwapping(tile)) {
                 break;
               }
-              this.tiles.removeItem(tile);
+              const oldHash = tile.getHash();
               tile.setY(tile.y + 1);
-              this.tiles.push(tile);
+              this.tiles.reassign(oldHash, tile);
             }
           }
           droppingPiece.bottomY += 1;
@@ -624,8 +624,8 @@ export class GameBoard {
         }
         const maxY = lowestY + 1;
         if (maxY - this.topMostRow < 15) {
-          for (let y = maxY; y < maxY + this.topMostRow; y++) {
-            this.fillRandom(y);
+          for (let y = 0; y < 15 - (maxY - this.topMostRow); y++) {
+            this.fillRandom(maxY + y);
           }
         }
       }
@@ -683,6 +683,7 @@ export class GameBoard {
     }
     queuedPops = unique(queuedPops);
     for (const queuedPop of queuedPops) {
+      queuedPop.matched = true;
       queuedPop.setSwappable(false);
     }
 
@@ -871,21 +872,24 @@ export class GameBoard {
           tile2.drawX = tile2.x * tileSize - tileSize * swapPercent;
         }
       } else if (this.swapAnimation.swapTickCount === 0) {
+        let tile1OldHash: number | undefined;
+        let tile2OldHash: number | undefined;
         if (tile1) {
-          this.tiles.removeItem(tile1);
+          tile1OldHash = tile1.getHash();
           tile1.setX(this.swapAnimation.x2);
           tile1.setSwappable(true);
         }
         if (tile2) {
-          this.tiles.removeItem(tile2);
+          tile2OldHash = tile2.getHash();
           tile2.setX(this.swapAnimation.x1);
           tile2.setSwappable(true);
         }
-        if (tile1) {
-          this.tiles.push(tile1);
-        }
-        if (tile2) {
-          this.tiles.push(tile2);
+        if (tile1OldHash !== undefined && tile2OldHash !== undefined) {
+          this.tiles.swapItems(tile1, tile2);
+        } else if (tile1OldHash !== undefined) {
+          this.tiles.reassign(tile1OldHash, tile1);
+        } else if (tile2OldHash !== undefined) {
+          this.tiles.reassign(tile2OldHash, tile2);
         }
         this.swapAnimation = undefined;
       }

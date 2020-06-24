@@ -1,6 +1,6 @@
 import {unreachable} from './types/unreachable';
 import {GameBoard, TileColor} from './gameBoard';
-import {tileSize} from './constants';
+import {boardWidth, tileSize} from './constants';
 
 export class GameTile {
   comboViable: boolean = false;
@@ -16,6 +16,7 @@ export class GameTile {
 
   drawX: number;
   drawY: number;
+  matched: boolean = false;
 
   constructor(
     public gameBoard: GameBoard,
@@ -82,6 +83,10 @@ export class GameTile {
       default:
         throw unreachable(this.drawType);
     }
+  }
+
+  getHash() {
+    return this.y * 1000 + this.x;
   }
 
   setComboViable(comboViable: boolean) {

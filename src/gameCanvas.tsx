@@ -143,7 +143,7 @@ ytytyt
       big: `ytyy t\nygpttp\npprtrr\npgpggt\ntgtppg\ngppggt\npggppt\ngttpyg\ngpptpp\nyggppg\ngppttg`,
     } as const;
 
-    seed('g');
+    seed('gccd');
 
     this.board = new GameBoard('endless', maps.puzzles.original2[5].board);
     this.board.loadAssetSheets(blockAssetSheet, comboBoxesAssetSheet, numbersAssetSheet);
@@ -175,7 +175,10 @@ ytytyt
           console.log(this.board?.tickCount);
         }
       } else {
-        this.board!.tick();
+        for (let i = 0; i < 5000; i++) {
+          this.board!.tick();
+        }
+        console.log(this.board?.tickCount);
       }
 
       requestAnimationFrame(tick);
