@@ -46,6 +46,8 @@ export type DroppingAnimation = {
 export type TileColor = 'green' | 'purple' | 'red' | 'yellow' | 'teal' | 'blue';
 export const GameTiles: TileColor[] = ['green', 'purple', 'red', 'yellow', 'teal', 'blue'];
 
+type BlockGridElement = GameTile | 'empty' | 'blocked';
+
 export class GameBoard {
   assets!: {
     block: {
@@ -96,6 +98,7 @@ export class GameBoard {
   tiles = new HashArray<GameTile>();
   topMostRow = 0;
   private _lowestVisibleRow?: number;
+  private cachedBlockGrid?: BlockGridElement[][];
 
   constructor(public gameMode: GameMode, start?: string) {
     switch (gameMode) {
@@ -415,9 +418,59 @@ export class GameBoard {
     this.tickTiles();
     this.updateSwap();
     this.updatePop();
+
+    this.buildCachedBlockGrid();
     this.testMatches();
     this.dropPieces();
     this.findNewDrops();
+  }
+  toString(): string {
+    let str = '';
+    for (let y = 0; y < this.lowestVisibleRow; y++) {
+      for (let x = 0; x < boardWidth; x++) {
+        const tile = this.tiles.afind((a) => a.x === x && a.y === y);
+        if (!tile) {
+          str += ' ';
+        } else {
+          switch (tile.color) {
+            case 'green':
+              str += 'g';
+              break;
+            case 'purple':
+              str += 'p';
+              break;
+            case 'red':
+              str += 'r';
+              break;
+            case 'yellow':
+              str += 'y';
+              break;
+            case 'teal':
+              str += 't';
+              break;
+            case 'blue':
+              str += 'b';
+              break;
+          }
+        }
+      }
+      str += '\n';
+    }
+    return str;
+  }
+
+  private buildCachedBlockGrid() {
+    const blockGrid: BlockGridElement[][] = [];
+    for (let y = this.topMostRow; y < this.lowestVisibleRow; y++) {
+      blockGrid[y] = [];
+      for (let x = 0; x < boardWidth; x++) {
+        const tile = this.getTile(x, y);
+        if (!tile) blockGrid[y][x] = 'empty';
+        else if (!tile.swappable || this.tileIsFloating(tile)) blockGrid[y][x] = 'blocked';
+        else blockGrid[y][x] = tile;
+      }
+    }
+    this.cachedBlockGrid = blockGrid;
   }
 
   private charToColor(s: string): TileColor {
@@ -663,11 +716,13 @@ export class GameBoard {
   }
 
   private testMatches() {
+    if (!this.cachedBlockGrid) return;
+
     let queuedPops: GameTile[] = [];
     for (let y = this.topMostRow; y < this.lowestVisibleRow; y++) {
       for (let x = 0; x < boardWidth; x++) {
-        const tile = this.getTile(x, y);
-        if (!tile || !tile.swappable || this.tileIsFloating(tile)) continue;
+        const tile = this.cachedBlockGrid[y][x];
+        if (tile === 'empty' || tile === 'blocked') continue;
         let total: number;
         if (tile.x < boardWidth - 1) {
           total = this.testTile(queuedPops, tile.color, 'right', tile.x + 1, tile.y, 1);
@@ -722,8 +777,12 @@ export class GameBoard {
     y: number,
     count: number
   ): number {
-    const tile = this.getTile(x, y);
-    if (!tile || !tile.swappable || this.tileIsFloating(tile)) return count;
+    const cachedBlockGridY = this.cachedBlockGrid![y];
+    if (!cachedBlockGridY) {
+      return count;
+    }
+    const tile = cachedBlockGridY[x];
+    if (tile === 'empty' || tile === 'blocked' || !tile) return count;
 
     switch (direction) {
       case 'left':

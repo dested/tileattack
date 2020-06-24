@@ -148,21 +148,20 @@ ytytyt
     this.board = new GameBoard('endless', maps.puzzles.original2[5].board);
     this.board.loadAssetSheets(blockAssetSheet, comboBoxesAssetSheet, numbersAssetSheet);
 
-    const slow = false;
+    const slow = true;
     let tickCount = 0;
     (window as any).ticker = 1;
 
-    const fastForward = 0;
+    const fastForward = 14800;
     if (fastForward) {
       setTimeout(() => {
-        console.profile('ticks');
+        // console.profile('ticks');
+        console.time('ticks');
         for (let i = 0; i < fastForward; i++) {
-          if (i % 1000 === 0) {
-            console.log('fast forward:', i);
-          }
           this.board!.tick();
         }
-        console.profileEnd('ticks');
+        console.timeEnd('ticks');
+        // console.profileEnd('ticks');
         (window as any).ticker = 30;
       }, 5);
     }
@@ -172,13 +171,12 @@ ytytyt
       if (slow) {
         if (tickCount % (window as any).ticker === 0) {
           this.board!.tick();
-          console.log(this.board?.tickCount);
+          // console.log(this.board?.tickCount);
         }
       } else {
-        for (let i = 0; i < 5000; i++) {
+        for (let i = 0; i < 1000; i++) {
           this.board!.tick();
         }
-        console.log(this.board?.tickCount);
       }
 
       requestAnimationFrame(tick);
